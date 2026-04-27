@@ -1,0 +1,12 @@
+[workspace]
+channels = ["conda-forge"]
+name = "simulation"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+python = "*"
+numpy = "*"
+matplotlib = "*"
