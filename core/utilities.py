@@ -1,5 +1,6 @@
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap
+from scipy.optimize import minimize_scalar
 
 blue_gray = LinearSegmentedColormap.from_list('blue_gray', ['black', (0.80, 0.92, 1.0)])
 
@@ -23,6 +24,7 @@ def make_checkerboard(P_world, board_cols, board_rows, square_size, background=1
 
     return squares
 
+
 def compute_disparity(map_x, map_y, u_grid, v_grid):
     dx = map_x - u_grid
     dy = map_y - v_grid
@@ -30,23 +32,33 @@ def compute_disparity(map_x, map_y, u_grid, v_grid):
 
 
 def sweep_s_gt(map_x, map_y, u_grid, v_grid, cx, cy):
-
     dx0 = map_x - cx
     dy0 = map_y - cy
 
-    s_values = np.linspace(1, 1.6, 120)
-    errors = []
+    def cost(s):
+        proj_x    = dx0 * s + cx
+        proj_y    = dy0 * s + cy
+        per_pixel = np.sqrt((proj_x - u_grid)**2 + (proj_y - v_grid)**2)
+        return np.sqrt(np.nanmean(per_pixel**2))  # RMSE
 
+    result = minimize_scalar(cost, bounds=(1.3, 1.55), method='bounded')
+
+    best_s    = result.x
+    best_rmse = result.fun
+
+    # best_s에서 추가 지표
+    proj_x    = dx0 * best_s + cx
+    proj_y    = dy0 * best_s + cy
+    per_pixel = np.sqrt((proj_x - u_grid)**2 + (proj_y - v_grid)**2)
+    best_count = np.nansum(per_pixel < 1.0)
+    sse        = np.nansum(per_pixel**2)
+
+    # 시각화용 s_values, count_under_px
+    s_values       = np.linspace(1.3, 1.55, 80)
+    count_under_px = []
     for s in s_values:
+        px = np.sqrt(((dx0*s+cx) - u_grid)**2 + ((dy0*s+cy) - v_grid)**2)
+        count_under_px.append(np.nansum(px < 1.0))
+    count_under_px = np.array(count_under_px)
 
-        proj_x = dx0 * s + cx
-        proj_y = dy0 * s + cy
-
-        err = np.sqrt(np.nansum((proj_x - u_grid)**2 + (proj_y - v_grid)**2))
-        errors.append(err)
-
-    errors = np.array(errors)
-    best_s = s_values[np.nanargmin(errors)]
-    best_error = errors[np.nanargmin(errors)]
-
-    return s_values, errors, best_s, best_error
+    return s_values, count_under_px, best_s, best_count, best_rmse
