@@ -10,13 +10,13 @@ from core.undistort import build_undistort_map
 # Camera intrinsics
 # =========================================================
 W, H = 593, 518
-fx, fy = 383.418, 382.382
+fx, fy = 383.418/1.33, 382.382/1.33
 cx, cy = 296.892, 260.068
 
 n_port = np.array([0.0, 0.0, 1.0])
 mu_a, mu_g, mu_w = 1.0, 1.47, 1.33
 rflat, tglass = 0.02, 0.002
-Z0 = 0.5
+Z0 = 1.0
 
 board_cols, board_rows = 10, 10
 square_size = 0.05
@@ -96,4 +96,4 @@ if __name__ == "__main__":
 
     plot_radial_disparity(map_u, map_v, u_grid, v_grid, cx, cy)
 
-    save_map(map_u, map_v, f"undist_lizard_Z{Z0}_s{best_s:.2f}_1.yaml")
+    save_map(map_u, map_v, f"undist_lizard_Z{Z0}_s{best_s:.2f}_2.yaml")
