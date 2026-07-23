@@ -32,17 +32,17 @@ def matrix_K(fx, fy, cx, cy):
     K     = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=float)
     return K, np.linalg.inv(K)
 
-def trace_underwater(H, W, K, K_inv, n_port, rflat, tglass, Z0,
-                   mu_a, mu_g, mu_w):
+def trace_underwater(u, v, K_inv, n_port, rflat, tglass, Z0,
+                      mu_a, mu_g, mu_w):
     """
     Returns
-    map_x, map_y : (H, W) float32  
-    valid        : (H, W) bool     
+    -------
+    P_water : (..., 3) float64 — world point each pixel is viewing
     """
-    # 1. Pixel grid → unit rays in air
+    # 1. Pixel coords → unit rays in air
     u, v = np.asarray(u, dtype=np.float64), np.asarray(v, dtype=np.float64)
     pixel = np.stack([u, v, np.ones_like(u)], axis=-1)
-    ray_air = normalize_batch(pixels @ K_inv.T)   
+    ray_air = normalize_batch(pixel @ K_inv.T)
 
     # 2. Air → glass interface
     plane1 = n_port * rflat
@@ -59,10 +59,9 @@ def trace_underwater(H, W, K, K_inv, n_port, rflat, tglass, Z0,
     ray_water = refract_batch(ray_glass, n_port, mu_g, mu_w)
 
     # 6. Intersect scene plane Z = Z0
-    denom     = ray_water[..., 2]
+    denom      = ray_water[..., 2]
     safe_denom = np.where(np.abs(denom) < EPS, EPS, denom)
     t          = (Z0 - P2[..., 2]) / safe_denom
-
     return P2 + t[..., np.newaxis] * ray_water
 
 def get_inair_world(u, v, fx, fy, cx, cy, Z0):

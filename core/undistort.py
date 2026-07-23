@@ -48,12 +48,3 @@ def invert_map(map_x, map_y, H, W, step=4):
     undist_x = griddata(src, ug_s.ravel().astype(np.float32), (ug_full, vg_full), method='linear')
     undist_y = griddata(src, vg_s.ravel().astype(np.float32), (ug_full, vg_full), method='linear')
     return undist_x.astype(np.float32), undist_y.astype(np.float32)
-
-
-def build_undistort_map_closed_form(P2, ray_water, depth, fx, fy, cx, cy, H, W, zoom=None):
-    """closed-form: 픽셀당 iteration 없음, 매우 빠름."""
-    map_x, map_y = forward_map(P2, ray_water, depth, fx, fy, cx, cy)
-    if zoom is not None:
-        map_x = (map_x - cx) * zoom + cx
-        map_y = (map_y - cy) * zoom + cy
-    return invert_map(map_x, map_y, H, W)
