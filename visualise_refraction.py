@@ -1,32 +1,26 @@
+import os
+import sys
+import argparse
+import yaml
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 
-from core.optics import matrix_K, trace_underwater, get_inair_world
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from core.optics import matrix_K, trace_underwater
 from core.undistort import compute_housing_geometry, forward_map, invert_map
 from core.undistort_newton import build_undistort_map_newton
 
-# =========================================================
-# Config
-# =========================================================
-METHOD = "newton"   # "closed_form" or "newton"
-
-W, H = 593, 518
-fx, fy = 383.418 / 1.33, 382.382 / 1.33
-cx, cy = 296.892, 260.068
-
-n_port = np.array([0.0, 0.0, 1.0])
-mu_a, mu_g, mu_w = 1.0, 1.47, 1.33
-rflat, tglass = 0.02, 0.002
-Z0   = 1.0
-ZOOM = None 
-
-board_cols, board_rows, square_size = 10, 10, 0.05
+# ── Fixed checkerboard parameters ──
+BOARD_COLS, BOARD_ROWS, SQUARE_SIZE = 10, 10, 0.1
 
 
-# =========================================================
-# checkerboard
-# =========================================================
+def load_config(config_path):
+    with open(config_path) as f:
+        return yaml.safe_load(f)
+
+
 def make_checkerboard(P_world, cols, rows, size, background=127):
     X, Y = P_world[..., 0], P_world[..., 1]
     w, h = cols * size, rows * size
@@ -47,8 +41,8 @@ blue_gray = plt.matplotlib.colors.LinearSegmentedColormap.from_list(
 
 
 def plot_radial_disparity(map_u, map_v, u_grid, v_grid, cx, cy):
-    r = np.sqrt((u_grid - cx)**2 + (v_grid - cy)**2)
-    disparity = np.sqrt((map_u - u_grid)**2 + (map_v - v_grid)**2)
+    r = np.sqrt((u_grid - cx) ** 2 + (v_grid - cy) ** 2)
+    disparity = np.sqrt((map_u - u_grid) ** 2 + (map_v - v_grid) ** 2)
 
     r_flat, d_flat = r.ravel(), disparity.ravel()
     order = np.argsort(r_flat)
@@ -69,16 +63,35 @@ def plot_radial_disparity(map_u, map_v, u_grid, v_grid, cx, cy):
     plt.tight_layout()
 
 
-# =========================================================
-# Run
-# =========================================================
-if __name__ == "__main__":
+def main():
+    parser = argparse.ArgumentParser(description="Visualise refraction correction from a YAML config")
+    parser.add_argument("config", help="Path to config YAML file")
+    args = parser.parse_args()
+
+    cfg = load_config(args.config)
+
+    method = cfg["method"]
+
+    cam = cfg["camera"]
+    W, H = cam["W"], cam["H"]
+    fx, fy = cam["fx"], cam["fy"]
+    cx, cy = cam["cx"], cam["cy"]
+
+    hs = cfg["housing"]
+    n_port = np.array(hs["n_port"])
+    mu_a, mu_g, mu_w = hs["mu_a"], hs["mu_g"], hs["mu_w"]
+    rflat, tglass = hs["rflat"], hs["tglass"]
+
+    corr = cfg["correction"]
+    Z0 = corr["z0_fixed"]
+    ZOOM = corr["zoom"]
+
     K, K_inv = matrix_K(fx, fy, cx, cy)
     u_grid, v_grid = np.meshgrid(np.arange(W, dtype=float), np.arange(H, dtype=float))
 
-    if METHOD == "closed_form":
+    if method == "closed_form":
         P2, ray_water = compute_housing_geometry(H, W, K_inv, n_port, rflat, tglass, mu_a, mu_g, mu_w)
-        fwd_x, fwd_y = forward_map(P2, ray_water, Z0, fx, fy, cx, cy)   # underwater 그림 생성용
+        fwd_x, fwd_y = forward_map(P2, ray_water, Z0, fx, fy, cx, cy)
 
         map_x = fwd_x if ZOOM is None else (fwd_x - cx) * ZOOM + cx
         map_y = fwd_y if ZOOM is None else (fwd_y - cy) * ZOOM + cy
@@ -87,26 +100,25 @@ if __name__ == "__main__":
     else:  # newton
         kwargs = dict(K_inv=K_inv, n_port=n_port, rflat=rflat, tglass=tglass,
                       mu_a=mu_a, mu_g=mu_g, mu_w=mu_w)
-        fwd_x, fwd_y = fwd_x, fwd_y = None, None
 
         P_water = trace_underwater(u_grid, v_grid, K_inv, n_port, rflat, tglass, Z0,
-                            mu_a, mu_g, mu_w)
-        
+                                    mu_a, mu_g, mu_w)
+
         fwd_x = fx * P_water[..., 0] / Z0 + cx
         fwd_y = fy * P_water[..., 1] / Z0 + cy
         map_u, map_v = build_undistort_map_newton(fx, fy, cx, cy, Z0, kwargs, W, H, zoom=ZOOM or 1.4)
 
-    disparity = np.sqrt((map_u - u_grid)**2 + (map_v - v_grid)**2)
-    rmse = np.sqrt(np.nanmean(disparity**2))
-    p95  = np.nanpercentile(disparity, 95)
-    print(f"method={METHOD} | Z0={Z0}, zoom={ZOOM}")
+    disparity = np.sqrt((map_u - u_grid) ** 2 + (map_v - v_grid) ** 2)
+    rmse = np.sqrt(np.nanmean(disparity ** 2))
+    p95 = np.nanpercentile(disparity, 95)
+    print(f"method={method} | Z0={Z0}, zoom={ZOOM}")
     print(f"pixel movement: RMSE={rmse:.2f}px, max={np.nanmax(disparity):.2f}px, p95={p95:.2f}px")
 
-    # ── underwater image (world point → checkerboard) ──
+    # ── underwater image (world point -> checkerboard) ──
     P_world_underwater = np.stack([
         (fwd_x - cx) / fx * Z0, (fwd_y - cy) / fy * Z0, np.full((H, W), Z0)
     ], axis=-1)
-    img_underwater = make_checkerboard(P_world_underwater, board_cols, board_rows, square_size).astype(np.uint8)
+    img_underwater = make_checkerboard(P_world_underwater, BOARD_COLS, BOARD_ROWS, SQUARE_SIZE).astype(np.uint8)
 
     # ── remove refraction ──
     map_u_f = np.nan_to_num(map_u, nan=-1).astype(np.float32)
@@ -115,7 +127,7 @@ if __name__ == "__main__":
 
     # ── visualise ──
     fig, axes = plt.subplots(1, 3, figsize=(16, 6))
-    fig.suptitle(f"{METHOD} | rflat={rflat}, tglass={tglass}, Z0={Z0}, zoom={ZOOM}", fontsize=12)
+    fig.suptitle(f"{method} | rflat={rflat}, tglass={tglass}, Z0={Z0}, zoom={ZOOM}", fontsize=12)
     axes[0].imshow(img_underwater, cmap=blue_gray, vmin=0, vmax=255)
     axes[0].set_title(f"underwater ({W}x{H})"); axes[0].axis('off')
     axes[1].imshow(img_corrected, cmap='gray', vmin=0, vmax=255)
@@ -127,3 +139,7 @@ if __name__ == "__main__":
 
     plot_radial_disparity(map_u, map_v, u_grid, v_grid, cx, cy)
     plt.show()
+
+
+if __name__ == "__main__":
+    main()

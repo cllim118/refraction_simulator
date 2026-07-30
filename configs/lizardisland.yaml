@@ -1,0 +1,28 @@
+method: closed_form   # "closed_form" or "newton"
+
+camera:
+  W: 593
+  H: 518
+  fx: 288.28  # 383.418 / 1.33
+  fy: 287.51  # 382.382 / 1.33
+  cx: 296.892
+  cy: 260.068
+
+housing:
+  n_port: [0.0, 0.0, 1.0]
+  mu_a: 1.0
+  mu_g: 1.47
+  mu_w: 1.33
+  rflat: 0.02
+  tglass: 0.002
+
+paths:
+  rgb_dir: "/home/chelim/hpc/VSLAM-LAB-Benchmark/LIZARDISLAND/feb/rgb_0"
+  output_dir: "/home/chelim/hpc/VSLAM-LAB-Benchmark/LIZARDISLAND/feb_corr_z15/rgb_11"
+  mask_dir: "/home/chelim/hpc/VSLAM-LAB-Benchmark/LIZARDISLAND/feb_corr_z15"
+  depth_dir: null   # null = single fixed depth mode
+
+correction:
+  z0_fixed: 1.5
+  zoom: 1.5
+  step_size: 1

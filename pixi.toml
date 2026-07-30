@@ -5,7 +5,9 @@ platforms = ["linux-64"]
 version = "0.1.0"
 
 [tasks]
-download = "python 00/squidle_dataset.py"
+remove-refraction = "python remove_refraction.py"
+visualise-refraction = "python visualise_refraction.py"
+find-best-scale = "python find_best_scale.py"
 
 [dependencies]
 python = "*"
