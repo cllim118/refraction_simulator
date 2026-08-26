@@ -50,11 +50,51 @@ def remap_with_mask(img, undist_x, undist_y):
 
 
 def to_rgba(corrected_bgr, mask):
-    """Combine a BGR image and a binary mask into an RGBA image
-    (alpha channel = mask, for use with 3DGS/nerfstudio)."""
+
     bgra = cv2.cvtColor(corrected_bgr, cv2.COLOR_BGR2BGRA)
     bgra[..., 3] = mask
     return bgra
+
+def find_largest_valid_rectangle(mask):
+
+    H, W = mask.shape
+    valid = (mask > 0).astype(np.int32)
+
+    height = np.zeros(W, dtype=np.int32)
+    best_area = 0
+    best_box = (0, H, 0, W)  # fallback: whole image
+
+    for y in range(H):
+        height = np.where(valid[y] > 0, height + 1, 0)
+
+        stack = []  # stores (start_x, h)
+        x = 0
+        while x <= W:
+            h = height[x] if x < W else 0
+            start = x
+            while stack and stack[-1][1] > h:
+                s_x, s_h = stack.pop()
+                width = x - s_x
+                area = s_h * width
+                if area > best_area:
+                    best_area = area
+                    best_box = (y - s_h + 1, y + 1, s_x, x)
+                start = s_x
+            stack.append((start, h))
+            x += 1
+
+    return best_box
+
+def crop_to_inscribed_rectangle(img, box):
+
+    y0, y1, x0, x1 = box
+    return img[y0:y1, x0:x1]
+
+
+def adjust_intrinsics_for_crop(cx, cy, box):
+
+    y0, y1, x0, x1 = box
+    return cx - x0, cy - y0
 
 
 def main():
@@ -86,6 +126,7 @@ def main():
     z0_fixed = corr["z0_fixed"]
     zoom = corr["zoom"]
     step_size = corr.get("step_size", 1)
+    crop_valid_bbox = corr.get("crop_valid_bbox", False)
 
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(mask_dir, exist_ok=True)
@@ -104,10 +145,13 @@ def main():
     )
     rgb_paths = rgb_paths[::step_size]
 
-    print(f"Found {len(rgb_paths)} images (step={step_size}), method={method}")
+    print(f"Found {len(rgb_paths)} images (step={step_size}), method={method}, "
+          f"crop_valid_bbox={crop_valid_bbox}")
 
     precomputed_map = None
     precomputed_mask = None
+    precomputed_crop_box = None
+
     if depth_dir is None:
         print(f"Single depth mode (Z0={z0_fixed}) — computing undistortion map once")
         if method == "closed_form":
@@ -126,13 +170,22 @@ def main():
             (undist_y >= 0) & (undist_y <= H - 1),
             255, 0
         ).astype(np.uint8)
-        cv2.imwrite(f"{mask_dir}/camera_mask.png", precomputed_mask)
-        print(f"Saved shared mask: {mask_dir}/camera_mask.png")
+        cv2.imwrite(f"{mask_dir}/mask.png", precomputed_mask)
+        print(f"Saved shared mask: {mask_dir}/mask.png")
+
+        if crop_valid_bbox:
+            precomputed_crop_box = find_largest_valid_rectangle(precomputed_mask)
+            y0, y1, x0, x1 = precomputed_crop_box
+            new_cx, new_cy = adjust_intrinsics_for_crop(cx, cy, precomputed_crop_box)
+            print(f"Inscribed valid rectangle: rows[{y0}:{y1}], cols[{x0}:{x1}] "
+                  f"({x1 - x0}x{y1 - y0}, no invalid pixels)")
+            print(f"Adjusted intrinsics for cropped output: "
+                  f"fx={fx}, fy={fy}, cx={new_cx:.2f}, cy={new_cy:.2f}")
 
     for rgb_path in rgb_paths:
         name = os.path.splitext(os.path.basename(rgb_path))[0]
         out_path = f"{output_dir}/{name}.png"
-        mask_path = f"{mask_dir}/{name}.png.png"
+        mask_path = f"{mask_dir}/{name}.png"
         if os.path.exists(out_path):
             continue
 
@@ -147,6 +200,7 @@ def main():
                 borderMode=cv2.BORDER_CONSTANT, borderValue=0
             )
             mask = precomputed_mask
+            crop_box = precomputed_crop_box
         else:
             depth = load_depth(name, depth_dir, z0_fixed, W, H)
             if depth is None:
@@ -166,9 +220,23 @@ def main():
             corrected, mask = remap_with_mask(img, undist_x, undist_y)
             cv2.imwrite(mask_path, mask)
 
+            crop_box = find_largest_valid_rectangle(mask) if crop_valid_bbox else None
+
         corrected_rgba = to_rgba(corrected, mask)
-        cv2.imwrite(out_path, corrected_rgba)
-        print(f"Saved: {name}.png ({corrected_rgba.shape[1]}x{corrected_rgba.shape[0]})")
+
+        if crop_valid_bbox and crop_box is not None:
+            corrected_rgba = crop_to_inscribed_rectangle(corrected_rgba, crop_box)
+            # No invalid pixels remain in this crop — drop alpha,
+            # save as plain RGB (e.g. for VGGT-style pipelines that
+            # can't consume a mask/alpha channel).
+            corrected_out = cv2.cvtColor(corrected_rgba, cv2.COLOR_BGRA2BGR)
+        else:
+            # Keep RGBA with mask, as before (uncropped output).
+            corrected_out = corrected_rgba
+
+        cv2.imwrite(out_path, corrected_out)
+        print(f"Saved: {name}.png ({corrected_out.shape[1]}x{corrected_out.shape[0]}, "
+              f"{corrected_out.shape[2]} channels)")
 
     print("Done.")
 
