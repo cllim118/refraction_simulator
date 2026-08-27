@@ -7,6 +7,10 @@ camera:
   fy: 287.51  # 382.382 / 1.33
   cx: 296.892
   cy: 260.068
+  k1: 0
+  k2: 0
+  p1: 0
+  p2: 0
 
 housing:
   n_port: [0.0, 0.0, 1.0]
@@ -18,11 +22,12 @@ housing:
 
 paths:
   rgb_dir: "/home/chelim/hpc/VSLAM-LAB-Benchmark/LIZARDISLAND/feb/rgb_0"
-  output_dir: "/home/chelim/hpc/VSLAM-LAB-Benchmark/LIZARDISLAND/feb_corr_z15/rgb_11"
-  mask_dir: "/home/chelim/hpc/VSLAM-LAB-Benchmark/LIZARDISLAND/feb_corr_z15"
+  output_dir: "/home/chelim/hpc/VSLAM-LAB-Benchmark/LIZARDISLAND/feb_cor_crop/rgb_0"
+  mask_dir: "/home/chelim/hpc/VSLAM-LAB-Benchmark/LIZARDISLAND/feb_cor_crop"
   depth_dir: null   # null = single fixed depth mode
 
 correction:
   z0_fixed: 1.5
-  zoom: 1.5
+  zoom: 1.0
   step_size: 1
+  crop_valid_bbox: true

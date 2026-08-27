@@ -64,6 +64,15 @@ def trace_underwater(u, v, K_inv, n_port, rflat, tglass, Z0,
     t          = (Z0 - P2[..., 2]) / safe_denom
     return P2 + t[..., np.newaxis] * ray_water
 
+def apply_radtan_distortion(x_norm, y_norm, k1, k2, p1, p2):
+    r2 = x_norm ** 2 + y_norm ** 2
+    radial = 1 + k1 * r2 + k2 * r2 ** 2
+
+    x_dist = x_norm * radial + 2 * p1 * x_norm * y_norm + p2 * (r2 + 2 * x_norm ** 2)
+    y_dist = y_norm * radial + p1 * (r2 + 2 * y_norm ** 2) + 2 * p2 * x_norm * y_norm
+
+    return x_dist, y_dist
+
 def get_inair_world(u, v, fx, fy, cx, cy, Z0):
     """in-air (u,v) → world point (pinhole, no refraction)"""
     X = (u - cx) / fx * Z0
