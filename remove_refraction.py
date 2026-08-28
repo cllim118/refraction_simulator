@@ -58,7 +58,6 @@ def to_rgba(corrected_bgr, mask):
 
 
 def find_largest_valid_rectangle(mask):
-    """Largest all-valid rectangle in a binary mask, via largest-rectangle-in-histogram per row."""
     H, W = mask.shape
     valid = mask > 0
 
@@ -95,6 +94,16 @@ def adjust_intrinsics_for_crop(cx, cy, box):
     return cx - x0, cy - y0
 
 
+def write_output_calibration(path, W, H, fx, fy, cx, cy):
+    with open(path, "w") as f:
+        f.write(f"focal_length: [{fx:.6f}, {fy:.6f}]\n")
+        f.write(f"principal_point: [{cx:.6f}, {cy:.6f}]\n")
+        f.write("distortion_coefficients: [0, 0, 0, 0]\n")
+        f.write(f"image_dimension: [{W}, {H}]\n")
+
+    print(f"Saved calibration: {path}")
+
+
 def find_rgb_paths(rgb_dir, step_size):
     paths = sorted(p for ext in IMAGE_EXTS for p in glob.glob(f"{rgb_dir}/{ext}"))
     return paths[::step_size]
@@ -129,6 +138,7 @@ def main():
     output_dir = paths["output_dir"]
     mask_dir = paths["mask_dir"]
     depth_dir = paths.get("depth_dir")
+    calib_path = paths.get("calib_path",os.path.join(os.path.dirname(output_dir), "new_calibration.yaml"))
 
     corr = cfg["correction"]
     z0_fixed = corr["z0_fixed"]
@@ -176,20 +186,30 @@ def main():
 
     if depth_dir is None:
         print(f"Single depth mode (Z0={z0_fixed}) — computing undistortion map once")
+        zoom_eff = zoom if method == "closed_form" else (zoom or 1.4)
         undist_x, undist_y = finalize_map(*build_map(z0_fixed, zoom))
         precomputed_map = (undist_x, undist_y)
         precomputed_mask = compute_valid_mask(undist_x, undist_y, W, H)
         cv2.imwrite(f"{mask_dir}/mask.png", precomputed_mask)
         print(f"Saved shared mask: {mask_dir}/mask.png")
 
+        out_W, out_H = W, H
+        out_fx, out_fy = fx * zoom_eff, fy * zoom_eff
+        out_cx, out_cy = cx, cy
+
         if crop_valid_bbox:
             precomputed_crop_box = find_largest_valid_rectangle(precomputed_mask)
             y0, y1, x0, x1 = precomputed_crop_box
-            new_cx, new_cy = adjust_intrinsics_for_crop(cx, cy, precomputed_crop_box)
+            new_cx, new_cy = adjust_intrinsics_for_crop(out_cx, out_cy, precomputed_crop_box)
+            out_W, out_H = x1 - x0, y1 - y0
+            out_cx, out_cy = new_cx, new_cy
             print(f"Inscribed valid rectangle: rows[{y0}:{y1}], cols[{x0}:{x1}] "
                   f"({x1 - x0}x{y1 - y0}, no invalid pixels)")
             print(f"Adjusted intrinsics for cropped output: "
-                  f"fx={fx}, fy={fy}, cx={new_cx:.2f}, cy={new_cy:.2f}")
+                  f"fx={out_fx:.2f}, fy={out_fy:.2f}, cx={new_cx:.2f}, cy={new_cy:.2f}")
+
+        write_output_calibration(calib_path, out_W, out_H,
+                                 out_fx, out_fy, out_cx, out_cy)
 
     for rgb_path in rgb_paths:
         name = os.path.splitext(os.path.basename(rgb_path))[0]
