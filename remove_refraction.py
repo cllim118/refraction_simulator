@@ -9,6 +9,7 @@ import cv2
 from core.optics import matrix_K, apply_radtan_distortion
 from core.undistort import compute_housing_geometry, build_undistort_map_closed_form
 from core.undistort_newton import build_undistort_map_newton
+from core.find_best_scale import find_optimal_scale, find_in_bounds_scale
 
 IMAGE_EXTS = ["*.jpg", "*.JPG", "*.jpeg", "*.JPEG", "*.png", "*.PNG",
               "*.bmp", "*.BMP", "*.tiff", "*.TIFF"]
@@ -94,12 +95,13 @@ def adjust_intrinsics_for_crop(cx, cy, box):
     return cx - x0, cy - y0
 
 
-def write_output_calibration(path, W, H, fx, fy, cx, cy):
+def write_output_calibration(path, W, H, fx, fy, cx, cy, s):
     with open(path, "w") as f:
         f.write(f"focal_length: [{fx:.6f}, {fy:.6f}]\n")
         f.write(f"principal_point: [{cx:.6f}, {cy:.6f}]\n")
         f.write("distortion_coefficients: [0, 0, 0, 0]\n")
         f.write(f"image_dimension: [{W}, {H}]\n")
+        f.write(f"zoom: {s:.6f}\n")
 
     print(f"Saved calibration: {path}")
 
@@ -121,9 +123,7 @@ def main():
     W, H = cam["W"], cam["H"]
     fx, fy = cam["fx"], cam["fy"]
     cx, cy = cam["cx"], cam["cy"]
-    # Known lens distortion, applied on top of the refraction map.
-    # Defaults to zero (no radtan correction) if not present in the config,
-    # so existing configs without these keys keep working unchanged.
+
     k1, k2 = cam.get("k1", 0.0), cam.get("k2", 0.0)
     p1, p2 = cam.get("p1", 0.0), cam.get("p2", 0.0)
     apply_radtan = any(v != 0.0 for v in (k1, k2, p1, p2))
@@ -142,9 +142,29 @@ def main():
 
     corr = cfg["correction"]
     z0_fixed = corr["z0_fixed"]
-    zoom = corr["zoom"]
     step_size = corr.get("step_size", 1)
     crop_valid_bbox = corr.get("crop_valid_bbox", False)
+
+    print("Finding optimal zoom...")
+
+    map_x, map_y, s_values, rmse_values, _, _ = find_optimal_scale(
+        z0_fixed, W, H, fx, fy, cx, cy,
+        n_port, rflat, tglass, mu_a, mu_g, mu_w
+    )
+
+    zoom, zoom_rmse = find_in_bounds_scale(
+        map_x, map_y, s_values, rmse_values,
+        W, H, cx, cy
+    )
+
+    if zoom is None:
+        raise RuntimeError(
+            "No in-bounds zoom found in the search range."
+        )
+
+    print(f"Best scale in bounds = {zoom:.4f}")
+    print(f"RMSE = {zoom_rmse:.4f} px")
+
 
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(mask_dir, exist_ok=True)
@@ -209,7 +229,7 @@ def main():
                   f"fx={out_fx:.2f}, fy={out_fy:.2f}, cx={new_cx:.2f}, cy={new_cy:.2f}")
 
         write_output_calibration(calib_path, out_W, out_H,
-                                 out_fx, out_fy, out_cx, out_cy)
+                                 out_fx, out_fy, out_cx, out_cy, zoom)
 
     for rgb_path in rgb_paths:
         name = os.path.splitext(os.path.basename(rgb_path))[0]

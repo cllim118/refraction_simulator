@@ -27,17 +27,14 @@ def find_optimal_scale(Z0, W, H, fx, fy, cx, cy, n_port, rflat, tglass, mu_a, mu
     s_values, rmse_values, best_s, best_count, best_rmse = sweep_s_gt(
         map_x, map_y, u_grid, v_grid, cx, cy
     )
-    print(f"Z0={Z0}")
-    print(f"  optimal scale (ZOOM): {best_s:.4f}")
-    print(f"  RMSE at optimal scale: {best_rmse:.4f} px")
-    print(f"  pixels under 1px error: {best_count}")
+    # print(f"Z0={Z0}")
+    # print(f"  optimal scale (ZOOM): {best_s:.4f}")
+    # print(f"  RMSE at optimal scale: {best_rmse:.4f} px")
+    # print(f"  pixels under 1px error: {best_count}")
     return map_x, map_y, s_values, rmse_values, best_s, best_rmse
 
 
 def find_in_bounds_scale(map_x, map_y, s_values, rmse_values, W, H, cx, cy):
-    """Among the scales already swept by sweep_s_gt, find the one with the
-    lowest RMSE whose scaled map stays fully within [0, W-1] x [0, H-1]
-    (i.e. does not push any pixel outside the original image bounds)."""
     dx0 = map_x - cx
     dy0 = map_y - cy
 
@@ -85,7 +82,7 @@ def main():
     map_x, map_y, s_values, rmse_values, best_s, best_rmse = find_optimal_scale(
         Z0_FIXED, W, H, fx, fy, cx, cy, n_port, rflat, tglass, mu_a, mu_g, mu_w
     )
-    print(f"\nBest ZOOM (unconstrained) = {best_s:.4f}")
+    # print(f"\nBest ZOOM (unconstrained) = {best_s:.4f}")
 
     best_s_in_bounds, best_rmse_in_bounds = find_in_bounds_scale(
         map_x, map_y, s_values, rmse_values, W, H, cx, cy

@@ -21,13 +21,12 @@ housing:
   tglass: 0.002
 
 paths:
-  rgb_dir: "/home/chelim/hpc/VSLAM-LAB-Benchmark/LIZARDISLAND/feb/rgb_0"
-  output_dir: "/home/chelim/hpc/VSLAM-LAB-Benchmark/LIZARDISLAND/feb_cor_crop/rgb_0"
-  mask_dir: "/home/chelim/hpc/VSLAM-LAB-Benchmark/LIZARDISLAND/feb_cor_crop"
+  rgb_dir: "./input/rgb"
+  output_dir: "./output/corrected"
+  mask_dir: "./output/mask"
   depth_dir: null   # null = single fixed depth mode
 
 correction:
   z0_fixed: 1.5
-  zoom: 1.0
   step_size: 1
   crop_valid_bbox: true
